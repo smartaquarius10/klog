@@ -1,9 +1,9 @@
-mod models;
 mod commands;
-pub mod utils; 
+mod models;
+pub mod utils;
 use clap::{Parser, Subcommand};
-use kube::Client; // Import Client
 use indicatif::{ProgressBar, ProgressStyle};
+use kube::Client; // Import Client
 
 #[derive(Parser)]
 // Add these attributes to enable auto-generation of help/version
@@ -17,8 +17,14 @@ struct Cli {
 enum Commands {
     /// Tail logs from pods
     Log {
-        /// Pass target namespace.
-        /// If -n is passed without a value, uses current context. 
+        /// Optional: Direct pod name (skips all menus)
+        pod: Option<String>,
+
+        #[arg(short, long, num_args = 0..=1, default_missing_value = None)]
+        /// Deployment: -d (menu), -d <name> (specific deployment)
+        deployment: Option<Option<String>>,
+        /// Use current context if not passed.
+        /// If -n is passed with value, uses namespace.
         /// If -n is missing, shows interactive menu.
         #[arg(short, long, num_args = 0..=1, default_missing_value = None)]
         namespace: Option<Option<String>>,
@@ -34,6 +40,9 @@ enum Commands {
         /// If passed, will tail previous terminated container logs
         #[arg(short, long, default_value_t = false)]
         previous: bool,
+        #[arg(short, long, default_value = "50")]
+        /// Number of lines to show from the end. Use '*' to show all logs.
+        tail: String,
     },
     /// Summarized diagnostic of a pod's health and recent events
     Describe {
@@ -41,7 +50,7 @@ enum Commands {
         #[arg(short, long)]
         pod: Option<String>,
         /// Target namespace.
-        /// If -n is passed without a value, uses current context. 
+        /// If -n is passed without a value, uses current context.
         /// If -n is missing, shows interactive menu.
         #[arg(short, long, num_args = 0..=1, default_missing_value = None)]
         namespace: Option<Option<String>>,
@@ -59,16 +68,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // 2. Start Spinner for Initialization
     let pb = ProgressBar::new_spinner();
     pb.set_style(ProgressStyle::default_spinner().template("{spinner:.green} {msg}")?);
-    pb.set_message("Initializing Kubernetes client...");
+    pb.set_message("Initializing");
     pb.enable_steady_tick(std::time::Duration::from_millis(120));
 
     // 3. Initialize Client ONCE
     let client = Client::try_default().await?;
-    pb.finish_and_clear();    
+    pb.finish_and_clear();
 
     match cli.command {
-        Commands::Log { namespace, container_select, filter, exclude,previous } => {
-            commands::log::run(client.clone(), namespace, container_select, filter, exclude, previous).await?;
+        Commands::Log {
+            pod, 
+            deployment,
+            namespace,
+            container_select,
+            filter,
+            exclude,
+            previous,
+            tail,
+        } => {
+            commands::log::run(
+                client.clone(),
+                pod, 
+                deployment,
+                namespace,
+                container_select,
+                filter,
+                exclude,
+                previous,
+                tail
+            )
+            .await?;
         }
         Commands::Describe { pod, namespace } => {
             // New command!
