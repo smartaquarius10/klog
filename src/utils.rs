@@ -1,19 +1,27 @@
 use crate::models::PodOption;
-use kube::{Client, Api, api::ListParams, config::Config};
-use k8s_openapi::api::core::v1::{Namespace, Pod};
-use inquire::MultiSelect;
-use indicatif::{ProgressBar, ProgressStyle};
-use futures::future::join_all;
 use colored::*;
+use futures::future::join_all;
+use indicatif::{ProgressBar, ProgressStyle};
+use inquire::MultiSelect;
+use inquire::ui::{Color, RenderConfig, StyleSheet, Styled};
+use k8s_openapi::api::apps::v1::Deployment;
+use k8s_openapi::api::core::v1::{Namespace, Pod};
+use kube::{
+    Api, Client,
+    api::ListParams,
+    config::{Config},
+};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use k8s_openapi::api::apps::v1::Deployment;
-
 
 // --- SHARED SPINNER ---
 pub fn create_spinner(msg: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::default_spinner().template("{spinner:.green} {msg}").unwrap());
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.green} {msg}")
+            .unwrap(),
+    );
     pb.set_message(msg.to_string());
     pb.enable_steady_tick(std::time::Duration::from_millis(120));
     pb
@@ -21,15 +29,15 @@ pub fn create_spinner(msg: &str) -> ProgressBar {
 
 // --- SHARED NAMESPACE LOGIC ---
 pub async fn get_selected_namespaces(
-    client: Client, 
-    arg: Option<Option<String>>
+    client: Client,
+    arg: Option<Option<String>>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     match arg {
         None => {
             let config = Config::infer().await?;
             let current_ns = config.default_namespace.clone();
             println!("Using context namespace: {}", current_ns.cyan());
-            Ok(vec![current_ns])            
+            Ok(vec![current_ns])
         }
         Some(None) => {
             let pb = create_spinner("Fetching namespaces...");
@@ -37,8 +45,11 @@ pub async fn get_selected_namespaces(
             let ns_list = ns_api.list(&ListParams::default()).await?;
             pb.finish_and_clear();
 
-            let ns_options: Vec<String> = ns_list.items.into_iter()
-                .filter_map(|n| n.metadata.name).collect();
+            let ns_options: Vec<String> = ns_list
+                .items
+                .into_iter()
+                .filter_map(|n| n.metadata.name)
+                .collect();
             Ok(MultiSelect::new("Select Namespaces:", ns_options).prompt()?)
         }
         Some(Some(ns)) => Ok(vec![ns]),
@@ -47,8 +58,8 @@ pub async fn get_selected_namespaces(
 
 // --- SHARED POD FETCHING (PARALLEL) ---
 pub async fn fetch_all_pods(
-    client: Client, 
-    namespaces: Vec<String>
+    client: Client,
+    namespaces: Vec<String>,
 ) -> Result<Vec<PodOption>, Box<dyn std::error::Error + Send + Sync>> {
     let pb = create_spinner("Fetching pods...");
     let mut tasks = Vec::new();
@@ -71,8 +82,15 @@ pub async fn fetch_all_pods(
         let (ns, pod_list) = res?;
         for p in pod_list?.items {
             let name = p.metadata.name.clone().unwrap_or_default();
-            let containers = p.spec.map(|s| s.containers.into_iter().map(|c| c.name).collect()).unwrap_or_default();
-            all_pods.push(PodOption { name, namespace: ns.clone(), containers });
+            let containers = p
+                .spec
+                .map(|s| s.containers.into_iter().map(|c| c.name).collect())
+                .unwrap_or_default();
+            all_pods.push(PodOption {
+                name,
+                namespace: ns.clone(),
+                containers,
+            });
         }
     }
     pb.finish_and_clear();
@@ -97,4 +115,16 @@ pub async fn fetch_all_deployments(
     }
     pb.finish_and_clear();
     Ok(all_deploys)
+}
+
+pub fn get_transparent_theme() -> RenderConfig<'static> {
+    let mut config = RenderConfig::empty();
+    config.help_message = StyleSheet::new().with_fg(Color::DarkGrey);
+    config.prompt = StyleSheet::new().with_fg(Color::White);
+    config.selected_option = Some(StyleSheet::new().with_fg(Color::LightCyan));
+    config.prompt_prefix = Styled::new("?").with_fg(Color::LightCyan);
+    config.scroll_up_prefix = Styled::new("↑").with_fg(Color::DarkGrey);
+    config.scroll_down_prefix = Styled::new("↓").with_fg(Color::DarkGrey);
+    config.highlighted_option_prefix = Styled::new(">").with_fg(Color::LightCyan);
+    config
 }

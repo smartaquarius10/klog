@@ -118,36 +118,27 @@ async fn pick_pods_and_containers(
 }
 
 fn draw_footer() {
-    // Get the current terminal size
-    let (cols, rows) = terminal::size().unwrap_or((80, 24));
+    let (_cols, rows) = terminal::size().unwrap_or((80, 24));
     
-    // 1. Prepare the text we want to show
-    let footer_text = " [s] Search History | [q] Quit ";
-    
-    // 2. Calculate how much space is left to fill the whole line
-    // We use .chars().count() because emojis like 🔍 count as 1 char but multiple bytes
-    let text_len = footer_text.chars().count();
-    let padding = if cols as usize > text_len {
-        " ".repeat(cols as usize - text_len)
-    } else {
-        "".to_string()
-    };
+    // 1. Modern text with NO background (.on_white removed)
+    // We use .dim() to make it look like a subtle hint
+    let footer_text = format!(
+        " {} {} | {} {} ",
+        "s".bold().cyan(), crossterm::style::Stylize::dim("Search History"),
+        "q".bold().red(), crossterm::style::Stylize::dim("Quit")
+    );
 
-    // 3. Draw the bar
     execute!(
-        stdout(),
-        cursor::SavePosition,               // Remember where the log was
-        cursor::MoveTo(0, rows - 1),        // Jump to the very last line
+        std::io::stdout(),
+        cursor::SavePosition,
+        cursor::MoveTo(0, rows - 1),
+        terminal::Clear(terminal::ClearType::CurrentLine) // Clear the line first
     ).unwrap();
 
-    // Print the text + the padding to fill the background to the end of the screen
-    print!("{}{}", 
-        footer_text.on_white().black(), 
-        padding.on_white()
-    );
+    print!("{}", footer_text);
     
-    execute!(stdout(), cursor::RestorePosition).unwrap(); // Jump back to the log line
-    let _ = stdout().flush();
+    let _ = std::io::stdout().flush();
+    execute!(std::io::stdout(), cursor::RestorePosition).unwrap();
 }
 
 async fn start_log_stream(
@@ -187,7 +178,7 @@ async fn start_log_stream(
                 if let Some(re) = &filter_regex { if !re.is_match(&log.message) { continue; } }
 
                 // --- 2. PRINT LOG WITH CARRIAGE RETURN ---
-                print_log_line(&log);
+                print_log_line(&log);                
                 draw_footer(); // Keep the footer at the bottom
             }
 
