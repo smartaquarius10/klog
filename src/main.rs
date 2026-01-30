@@ -19,19 +19,27 @@ struct Cli {
 pub enum Commands {
     /// Tail logs from pods
     Log {
+        /// If specified, fetch logs from this pod only
         pod: Option<String>,
         #[arg(short, long, num_args = 0..=1, default_missing_value = None)]
+        /// If specified, fetch logs from pods in this deployment only
         deployment: Option<Option<String>>,
+        /// If specified, list pods from this namespace only. If pass -n only then list namespaces to choose from. IF not specified, use current context namespace.
         #[arg(short, long, num_args = 0..=1, default_missing_value = None)]
         namespace: Option<Option<String>>,
+        /// If specified, prompt to select containers within pods
         #[arg(short, long, default_value_t = false)]
         container_select: bool,
+        /// Filter logs by this string (regex supported)
         #[arg(short, long)]
         filter: Option<String>,
+        /// Exclude logs by this string (regex supported)
         #[arg(short, long)]
         exclude: Option<String>,
+        /// If specified, fetch previous logs
         #[arg(short, long, default_value_t = false)]
         previous: bool,
+        /// Number of lines from the end of the logs to show. * for all
         #[arg(short, long, default_value = "50")]
         tail: String,
     },
@@ -85,9 +93,6 @@ async fn run_shell(client: Client) -> Result<(), Box<dyn std::error::Error + Sen
     // Initialize the history editor
     let mut rl = DefaultEditor::new()?;
     
-    // Load history from a file so it persists between klog restarts
-    let _ = rl.load_history("history.txt");
-
     loop {
         // PROMPT: This replaces inquire::Text
         let readline = rl.readline("klog> ");
